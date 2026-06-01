@@ -1,0 +1,55 @@
+# =============================================================================
+# AI-CICD-Monitor Configuration
+# =============================================================================
+
+# --------------- Server ---------------------------------------------------
+server:
+  host: "0.0.0.0"
+  port: 5000
+  debug: false
+
+# --------------- GitHub Integration ---------------------------------------
+github:
+  webhook_secret: ""          # Set via GITHUB_WEBHOOK_SECRET env var
+  token: ""                   # Set via GITHUB_TOKEN env var
+  auto_deploy_branches:
+    - main
+    - master
+    - production
+
+# --------------- Deployment -----------------------------------------------
+deployment:
+  storage_dir: "deployment_storage"
+  port_range:
+    start: 8100
+    end: 9000
+  timeout_seconds: 600        # Max time allowed for a single deployment
+  max_concurrent: 5
+
+# --------------- SSL ------------------------------------------------------
+ssl:
+  enabled: false
+  certs_dir: "certs"
+  provider: "letsencrypt"     # letsencrypt | self_signed
+  email: ""                   # Required for Let's Encrypt
+
+# --------------- AI Error Solver ------------------------------------------
+ai:
+  backend: "auto"             # auto | gemini | openai | rule_based
+  gemini_model: "gemini-1.5-flash"
+  openai_model: "gpt-4o-mini"
+  max_tokens: 512
+
+# --------------- Monitor Worker -------------------------------------------
+monitor:
+  poll_interval_seconds: 60
+  health_check_timeout: 5
+  reports_dir: "reports"
+  max_reports: 100            # Oldest reports pruned beyond this count
+
+# --------------- Logging --------------------------------------------------
+logging:
+  level: "INFO"               # DEBUG | INFO | WARNING | ERROR | CRITICAL
+  dir: "logs"
+  max_file_size_mb: 10
+  backup_count: 5

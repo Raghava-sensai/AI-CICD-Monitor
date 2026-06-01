@@ -1,0 +1,33 @@
+# AI-CICD-Monitor Python Dependencies
+
+# Web Framework
+flask>=3.0.0
+flask-cors>=4.0.0
+
+# HTTP Clients
+requests>=2.31.0
+
+# YAML
+PyYAML>=6.0.1
+
+# Async / Task Queue (optional, for production scale-out)
+celery>=5.3.0
+redis>=5.0.0
+
+# AI Backends (at least one required for AI error solving)
+google-generativeai>=0.5.0   # Gemini
+openai>=1.30.0               # GPT-4
+
+# System Metrics
+psutil>=5.9.0
+
+# Logging extras
+colorlog>=6.8.0
+
+# Dev / Testing
+pytest>=8.0.0
+pytest-cov>=5.0.0
+httpx>=0.27.0                # async test client
+
+# Type Checking
+mypy>=1.9.0

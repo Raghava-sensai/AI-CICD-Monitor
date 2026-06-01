@@ -1,0 +1,29 @@
+GitHub:-|-webhook:-|deployment-sorce-file:|-var:-dw:-<project.file>
+        |                                |-background-process-1)pml,2)systemend 
+        |                                  |-ssl-certificate
+        |                                  |-
+        |              
+        |   
+        |-deployment.txt:-|        
+                          |-all details
+                          |-project name  
+		
+			
+				
+			
+				
+			
+			
+			
+
+
+
+
+
+
+
+
+
+
+
+
