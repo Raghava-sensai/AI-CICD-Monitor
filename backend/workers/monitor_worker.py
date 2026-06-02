@@ -69,6 +69,7 @@ class MonitorWorker:
         """Return basic OS resource metrics."""
         try:
             import psutil  # type: ignore
+
             return {
                 "cpu_percent": psutil.cpu_percent(interval=0.1),
                 "memory_percent": psutil.virtual_memory().percent,
@@ -90,14 +91,16 @@ class MonitorWorker:
         for fname in sorted(os.listdir(REPORTS_DIR), reverse=True):
             if fname.endswith(".json"):
                 path = os.path.join(REPORTS_DIR, fname)
-                reports.append({
-                    "filename": fname,
-                    "path": path,
-                    "size_bytes": os.path.getsize(path),
-                    "created_at": datetime.datetime.fromtimestamp(
-                        os.path.getctime(path)
-                    ).isoformat(),
-                })
+                reports.append(
+                    {
+                        "filename": fname,
+                        "path": path,
+                        "size_bytes": os.path.getsize(path),
+                        "created_at": datetime.datetime.fromtimestamp(
+                            os.path.getctime(path)
+                        ).isoformat(),
+                    }
+                )
         return reports
 
     # ------------------------------------------------------------------
@@ -123,6 +126,7 @@ class MonitorWorker:
             return "unknown"
         try:
             import requests
+
             response = requests.get(url, timeout=5)
             return "healthy" if response.ok else "degraded"
         except Exception:

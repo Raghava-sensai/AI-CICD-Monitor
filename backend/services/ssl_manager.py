@@ -82,22 +82,35 @@ class SSLManager:
 
     def _issue_letsencrypt(self, domain: str, email: str) -> bool:
         cmd = [
-            "certbot", "certonly", "--standalone",
-            "-d", domain,
-            "--non-interactive", "--agree-tos",
-            "--email", email or f"admin@{domain}",
+            "certbot",
+            "certonly",
+            "--standalone",
+            "-d",
+            domain,
+            "--non-interactive",
+            "--agree-tos",
+            "--email",
+            email or f"admin@{domain}",
         ]
         stdout, stderr, code = run_command(cmd)
         return code == 0
 
     def _issue_self_signed(self, domain: str, cert_path: str, key_path: str) -> bool:
         cmd = [
-            "openssl", "req", "-x509", "-nodes",
-            "-days", "365",
-            "-newkey", "rsa:2048",
-            "-keyout", key_path,
-            "-out", cert_path,
-            "-subj", f"/CN={domain}",
+            "openssl",
+            "req",
+            "-x509",
+            "-nodes",
+            "-days",
+            "365",
+            "-newkey",
+            "rsa:2048",
+            "-keyout",
+            key_path,
+            "-out",
+            cert_path,
+            "-subj",
+            f"/CN={domain}",
         ]
         stdout, stderr, code = run_command(cmd)
         return code == 0

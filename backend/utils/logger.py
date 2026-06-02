@@ -10,7 +10,7 @@ from logging.handlers import RotatingFileHandler
 LOGS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "logs")
 LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-MAX_BYTES = 10 * 1024 * 1024   # 10 MB per file
+MAX_BYTES = 10 * 1024 * 1024  # 10 MB per file
 BACKUP_COUNT = 5
 
 
@@ -22,7 +22,7 @@ def setup_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
     """
     logger = logging.getLogger(name)
     if logger.handlers:
-        return logger   # already configured
+        return logger  # already configured
 
     logger.setLevel(level)
     formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)

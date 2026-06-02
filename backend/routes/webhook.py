@@ -23,7 +23,6 @@ def verify_signature(payload: bytes, signature: str, secret: str) -> bool:
     return hmac.compare_digest(expected, signature)
 
 
-
 @webhook_bp.route("/github", methods=["POST"])
 def github_webhook():
     """Receive and process GitHub webhook events."""
@@ -43,6 +42,7 @@ def github_webhook():
         result = github_service.handle_push_event(payload)
         if result.get("should_deploy"):
             deployment_service.trigger_deployment(result)
+            return jsonify({"status": "accepted", "data": result}), 202
         return jsonify({"status": "push processed", "data": result}), 200
 
     elif event == "pull_request":

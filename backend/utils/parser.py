@@ -14,6 +14,7 @@ logger = setup_logger(__name__)
 # Log Parsing
 # ------------------------------------------------------------------
 
+
 def extract_error_blocks(log_text: str, context_lines: int = 3) -> list[dict]:
     """
     Find error lines in *log_text* and return them with surrounding context.
@@ -35,11 +36,13 @@ def extract_error_blocks(log_text: str, context_lines: int = 3) -> list[dict]:
         if error_pattern.search(line):
             start = max(0, i - context_lines)
             end = min(len(lines), i + context_lines + 1)
-            results.append({
-                "line_number": i + 1,
-                "line": line.strip(),
-                "context": lines[start:end],
-            })
+            results.append(
+                {
+                    "line_number": i + 1,
+                    "line": line.strip(),
+                    "context": lines[start:end],
+                }
+            )
     return results
 
 
@@ -53,7 +56,7 @@ def extract_build_time(log_text: str) -> Optional[float]:
     patterns = [
         re.compile(r"in\s+([\d.]+)s\b"),
         re.compile(r"([\d.]+)\s+seconds"),
-        re.compile(r"(\d+)m\s*(\d+)s"),   # "1m 23s" → 83s
+        re.compile(r"(\d+)m\s*(\d+)s"),  # "1m 23s" → 83s
     ]
     for pattern in patterns:
         m = pattern.search(log_text)
@@ -67,6 +70,7 @@ def extract_build_time(log_text: str) -> Optional[float]:
 # ------------------------------------------------------------------
 # YAML / Config Parsing
 # ------------------------------------------------------------------
+
 
 def parse_yaml_file(path: str) -> dict:
     """Load and return a YAML file as a dict. Returns {} on error."""
@@ -90,6 +94,7 @@ def parse_yaml_string(content: str) -> dict:
 # ------------------------------------------------------------------
 # Text Utilities
 # ------------------------------------------------------------------
+
 
 def strip_ansi(text: str) -> str:
     """Remove ANSI escape codes (terminal colours) from *text*."""

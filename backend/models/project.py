@@ -12,7 +12,7 @@ class Project:
     """Represents a GitHub repository being monitored by AI-CICD-Monitor."""
 
     project_id: str
-    repo: str                        # e.g. "owner/repo-name"
+    repo: str  # e.g. "owner/repo-name"
     branch: str = "main"
     language: Optional[str] = None
     health_url: Optional[str] = None
@@ -23,7 +23,7 @@ class Project:
         default_factory=lambda: datetime.datetime.utcnow().isoformat()
     )
     last_deployed_at: Optional[str] = None
-    status: str = "idle"             # idle | deploying | running | failed | stopped
+    status: str = "idle"  # idle | deploying | running | failed | stopped
     tags: list = field(default_factory=list)
 
     # ------------------------------------------------------------------

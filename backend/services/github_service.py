@@ -28,6 +28,7 @@ class GithubService:
     def handle_push_event(self, payload: dict) -> dict:
         """Process a push event and decide whether to deploy."""
         repo = payload.get("repository", {}).get("full_name", "unknown")
+        clone_url = payload.get("repository", {}).get("clone_url")
         branch = payload.get("ref", "").replace("refs/heads/", "")
         commit_sha = payload.get("after", "")
         pusher = payload.get("pusher", {}).get("name", "unknown")
@@ -36,6 +37,7 @@ class GithubService:
 
         return {
             "repo": repo,
+            "clone_url": clone_url,
             "branch": branch,
             "commit_sha": commit_sha,
             "pusher": pusher,
@@ -80,7 +82,9 @@ class GithubService:
             logger.error(f"Failed to fetch repo info for {repo_full_name}: {exc}")
             return None
 
-    def get_latest_commit(self, repo_full_name: str, branch: str = "main") -> Optional[dict]:
+    def get_latest_commit(
+        self, repo_full_name: str, branch: str = "main"
+    ) -> Optional[dict]:
         """Return the latest commit on a branch."""
         url = f"{GITHUB_API_BASE}/repos/{repo_full_name}/commits/{branch}"
         try:
@@ -113,7 +117,9 @@ class GithubService:
             "context": context,
         }
         try:
-            response = requests.post(url, json=payload, headers=self.headers, timeout=10)
+            response = requests.post(
+                url, json=payload, headers=self.headers, timeout=10
+            )
             response.raise_for_status()
             logger.info(f"Commit status '{state}' posted for {sha}")
             return True

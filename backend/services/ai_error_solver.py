@@ -3,6 +3,7 @@ AI Error Solver - Uses an LLM to suggest fixes for pipeline and runtime errors.
 """
 
 import os
+import json
 from typing import Optional
 from utils.logger import setup_logger
 
@@ -17,11 +18,6 @@ class AIErrorSolver:
     """
     Provides AI-powered root-cause analysis and fix suggestions
     for build / deployment errors.
-
-    Supported backends (auto-detected):
-      1. Google Gemini  (GEMINI_API_KEY)
-      2. OpenAI GPT-4   (OPENAI_API_KEY)
-      3. Rule-based fallback (no key required)
     """
 
     def __init__(self):
@@ -33,60 +29,73 @@ class AIErrorSolver:
     # ------------------------------------------------------------------
 
     def suggest_fix(self, error_text: str, context: Optional[dict] = None) -> dict:
-        """
-        Analyse *error_text* and return a structured fix suggestion.
+        """Legacy fix endpoint."""
+        context = context or {}
+        if self._backend == "gemini":
+            return self._ask_gemini_fix(error_text, context)
+        elif self._backend == "openai":
+            return self._ask_openai_fix(error_text, context)
+        else:
+            return self._rule_based_fallback_fix(error_text)
 
+    def explain_error(self, error_text: str, context: Optional[dict] = None) -> dict:
+        """
+        New explanation endpoint.
         Returns:
-            {
-                "summary": str,
-                "root_cause": str,
-                "steps": list[str],
-                "references": list[str],
-                "confidence": float  # 0.0 – 1.0
-            }
+        {
+          "explanation": "...",
+          "likely_file": "...",
+          "suggested_code": "...",
+          "confidence": 0.94
+        }
         """
         context = context or {}
         if self._backend == "gemini":
-            return self._ask_gemini(error_text, context)
+            return self._ask_gemini_explain(error_text, context)
         elif self._backend == "openai":
-            return self._ask_openai(error_text, context)
+            return self._ask_openai_explain(error_text, context)
         else:
-            return self._rule_based_fallback(error_text)
+            return self._rule_based_fallback_explain(error_text)
 
     # ------------------------------------------------------------------
     # Backends
     # ------------------------------------------------------------------
 
-    def _ask_gemini(self, error_text: str, context: dict) -> dict:
-        """Call the Gemini Generative Language API."""
+    def _ask_gemini_explain(self, error_text: str, context: dict) -> dict:
         try:
             import google.generativeai as genai  # type: ignore
 
             genai.configure(api_key=GEMINI_API_KEY)
             model = genai.GenerativeModel("gemini-1.5-flash")
-            prompt = self._build_prompt(error_text, context)
+            prompt = self._build_explain_prompt(error_text, context)
             response = model.generate_content(prompt)
-            return self._parse_llm_response(response.text)
+            return self._parse_json_response(response.text)
         except Exception as exc:
-            logger.warning(f"Gemini call failed: {exc}. Falling back to rule-based.")
-            return self._rule_based_fallback(error_text)
+            logger.warning(f"Gemini call failed: {exc}. Falling back.")
+            return self._rule_based_fallback_explain(error_text)
+            
+    def _ask_gemini_fix(self, error_text: str, context: dict) -> dict:
+        return {"summary": "Gemini fix not implemented", "root_cause": "", "steps": [], "references": [], "confidence": 0.0}
 
-    def _ask_openai(self, error_text: str, context: dict) -> dict:
-        """Call the OpenAI Chat Completions API."""
+    def _ask_openai_explain(self, error_text: str, context: dict) -> dict:
         try:
             from openai import OpenAI  # type: ignore
 
             client = OpenAI(api_key=OPENAI_API_KEY)
-            prompt = self._build_prompt(error_text, context)
+            prompt = self._build_explain_prompt(error_text, context)
             completion = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=512,
+                response_format={"type": "json_object"}
             )
-            return self._parse_llm_response(completion.choices[0].message.content)
+            return self._parse_json_response(completion.choices[0].message.content)
         except Exception as exc:
-            logger.warning(f"OpenAI call failed: {exc}. Falling back to rule-based.")
-            return self._rule_based_fallback(error_text)
+            logger.warning(f"OpenAI call failed: {exc}. Falling back.")
+            return self._rule_based_fallback_explain(error_text)
+            
+    def _ask_openai_fix(self, error_text: str, context: dict) -> dict:
+        return {"summary": "OpenAI fix not implemented", "root_cause": "", "steps": [], "references": [], "confidence": 0.0}
 
     # ------------------------------------------------------------------
     # Helpers
@@ -101,55 +110,69 @@ class AIErrorSolver:
         return "rule_based"
 
     @staticmethod
-    def _build_prompt(error_text: str, context: dict) -> str:
+    def _build_explain_prompt(error_text: str, context: dict) -> str:
         ctx_str = "\n".join(f"{k}: {v}" for k, v in context.items())
         return (
-            "You are a senior DevOps engineer. Analyse the following CI/CD error and "
-            "provide: (1) a one-sentence summary, (2) the root cause, "
-            "(3) numbered fix steps, (4) any relevant doc links.\n\n"
+            "You are an expert developer. Explain the following error and provide a fix.\n"
+            "Return ONLY a valid JSON object with EXACTLY these keys:\n"
+            '{"explanation": "String explaining the error", '
+            '"likely_file": "File name where it happened", '
+            '"suggested_code": "The code snippet to fix it", '
+            '"confidence": Float between 0.0 and 1.0}\n\n'
             f"Context:\n{ctx_str}\n\nError:\n{error_text}"
         )
 
     @staticmethod
-    def _parse_llm_response(text: str) -> dict:
-        """Best-effort parse of a free-text LLM response."""
-        return {
-            "summary": text[:200],
-            "root_cause": "",
-            "steps": [text],
-            "references": [],
-            "confidence": 0.75,
-        }
+    def _parse_json_response(text: str) -> dict:
+        try:
+            # Strip markdown blocks if any
+            clean = text.strip()
+            if clean.startswith("```json"):
+                clean = clean[7:]
+            if clean.startswith("```"):
+                clean = clean[3:]
+            if clean.endswith("```"):
+                clean = clean[:-3]
+            return json.loads(clean.strip())
+        except Exception:
+            return {
+                "explanation": "Failed to parse AI response as JSON.",
+                "likely_file": "unknown",
+                "suggested_code": "",
+                "confidence": 0.0
+            }
 
     @staticmethod
-    def _rule_based_fallback(error_text: str) -> dict:
-        """Simple keyword-based suggestions when no LLM is available."""
-        steps = []
-        if "ModuleNotFoundError" in error_text or "No module named" in error_text:
-            steps = [
-                "Run `pip install -r requirements.txt`.",
-                "Check that you are using the correct virtual environment.",
-            ]
+    def _rule_based_fallback_explain(error_text: str) -> dict:
+        """Simple keyword-based explanation when no LLM is available."""
+        if "ModuleNotFoundError" in error_text:
+            return {
+                "explanation": "A required Python package is missing from the environment.",
+                "likely_file": "requirements.txt",
+                "suggested_code": "flask\nrequests",
+                "confidence": 0.98
+            }
         elif "npm ERR!" in error_text:
-            steps = [
-                "Run `npm install` to restore dependencies.",
-                "Delete `node_modules` and `package-lock.json`, then run `npm install` again.",
-            ]
-        elif "permission denied" in error_text.lower():
-            steps = [
-                "Check file/directory ownership with `ls -la`.",
-                "Run the failing command with appropriate permissions.",
-            ]
+            return {
+                "explanation": "NPM failed to install dependencies, likely due to a missing package or network issue.",
+                "likely_file": "package.json",
+                "suggested_code": "npm install",
+                "confidence": 0.85
+            }
         else:
-            steps = [
-                "Review the full log output for context.",
-                "Search the error message online or in the project issue tracker.",
-            ]
-
+            return {
+                "explanation": f"Rule-based generic explanation for: {error_text[:80]}...",
+                "likely_file": "unknown",
+                "suggested_code": "# Needs manual review",
+                "confidence": 0.35
+            }
+            
+    @staticmethod
+    def _rule_based_fallback_fix(error_text: str) -> dict:
         return {
-            "summary": f"Rule-based suggestion for: {error_text[:80]}...",
-            "root_cause": "Determined via pattern matching (no LLM configured).",
-            "steps": steps,
+            "summary": "Use the /explain endpoint instead.",
+            "root_cause": "",
+            "steps": [],
             "references": [],
-            "confidence": 0.5,
+            "confidence": 0.0,
         }

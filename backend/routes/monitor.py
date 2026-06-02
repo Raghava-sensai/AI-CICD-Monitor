@@ -5,6 +5,7 @@ Monitor Route - Real-time monitoring of projects and pipelines.
 from flask import Blueprint, jsonify, request
 from services.pipeline_analyzer import PipelineAnalyzer
 from services.ai_error_solver import AIErrorSolver
+from services.error_tracker import ErrorTracker
 from workers.monitor_worker import MonitorWorker
 from utils.logger import setup_logger
 
@@ -13,6 +14,7 @@ monitor_bp = Blueprint("monitor", __name__)
 
 pipeline_analyzer = PipelineAnalyzer()
 ai_error_solver = AIErrorSolver()
+error_tracker = ErrorTracker()
 monitor_worker = MonitorWorker()
 
 
@@ -53,9 +55,9 @@ def analyze_pipeline():
     return jsonify({"analysis": analysis}), 200
 
 
-@monitor_bp.route("/errors/solve", methods=["POST"])
-def solve_error():
-    """Use AI to suggest a fix for a given error."""
+@monitor_bp.route("/errors/explain", methods=["POST"])
+def explain_error():
+    """Use AI to explain an error and suggest a fix."""
     data = request.get_json(silent=True) or {}
     error_text = data.get("error", "")
     context = data.get("context", {})
@@ -63,8 +65,15 @@ def solve_error():
     if not error_text:
         return jsonify({"error": "error text is required"}), 400
 
-    solution = ai_error_solver.suggest_fix(error_text, context=context)
-    return jsonify({"solution": solution}), 200
+    explanation = ai_error_solver.explain_error(error_text, context=context)
+    return jsonify(explanation), 200
+
+
+@monitor_bp.route("/issues/top", methods=["GET"])
+def top_issues():
+    """Get the most frequent errors across all deployments."""
+    issues = error_tracker.get_top_issues(limit=10)
+    return jsonify({"issues": issues}), 200
 
 
 @monitor_bp.route("/reports", methods=["GET"])

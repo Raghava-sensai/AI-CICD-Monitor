@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI CICD Monitor</title>
+</head>
+<body>
+
+<h1>AI-CICD Monitor</h1>
+
+<input type="file" id="zipFile">
+<button onclick="uploadProject()">Upload</button>
+
+<pre id="result"></pre>
+
+<script>
+async function uploadProject() {
+
+    const file = document.getElementById("zipFile").files[0];
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("name", file.name);
+
+    const response = await fetch(
+        "/api/deployment/upload",
+        {
+            method: "POST",
+            body: formData
+        }
+    );
+
+    const data = await response.json();
+
+    document.getElementById("result").textContent =
+        JSON.stringify(data, null, 2);
+}
+</script>
+
+</body>
+</html>

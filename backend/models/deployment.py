@@ -26,6 +26,8 @@ class Deployment:
     repo: str
     branch: str
     port: int
+
+    # Core status
     status: DeploymentStatus = DeploymentStatus.PENDING
     created_at: str = field(
         default_factory=lambda: datetime.datetime.utcnow().isoformat()
@@ -33,9 +35,21 @@ class Deployment:
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
     commit_sha: Optional[str] = None
+    clone_url: Optional[str] = None
+
+    # Error / failure info
     error: Optional[str] = None
+    failed_stage: Optional[str] = None
     log_file: Optional[str] = None
     process_pid: Optional[int] = None
+
+    # Rollback tracking
+    rolled_back: bool = False
+    previous_deployment: Optional[str] = None
+    rollback_reason: Optional[str] = None
+
+    # Health check
+    health_check_url: Optional[str] = None
 
     # ------------------------------------------------------------------
     # Serialisation
@@ -43,7 +57,7 @@ class Deployment:
 
     def to_dict(self) -> dict:
         d = asdict(self)
-        d["status"] = self.status.value   # Enum → string
+        d["status"] = self.status.value  # Enum → string
         return d
 
     @classmethod
