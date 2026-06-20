@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    volumes:
+      # Map the docker socket so pipeline_runner can use docker-py to spawn containers
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Map the local deployment storage to persist state and source code
+      - ./deployment_storage:/app/deployment_storage
+    environment:
+      - FLASK_ENV=development
+      - HOST_STORAGE_PATH=C:/Users/ragha/AI-CICD-Monitor/deployment_storage

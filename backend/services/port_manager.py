@@ -7,8 +7,8 @@ from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-DEFAULT_PORT_RANGE_START = 8100
-DEFAULT_PORT_RANGE_END = 9000
+DEFAULT_PORT_RANGE_START = 3000
+DEFAULT_PORT_RANGE_END = 3999
 
 
 class PortManager:
@@ -54,11 +54,22 @@ class PortManager:
 
     @staticmethod
     def _is_free(port: int) -> bool:
-        """Return True if the OS reports the port as unbound."""
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
-                sock.bind(("0.0.0.0", port))
-                return True
-            except OSError:
-                return False
+        """Return True if the OS reports the port as unbound on all interfaces."""
+        # IPv4
+        for ip in ["0.0.0.0", "127.0.0.1"]:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                try:
+                    sock.bind((ip, port))
+                except OSError:
+                    return False
+                    
+        # IPv6 (catch Node.js which often binds to :: by default)
+        if socket.has_ipv6:
+            for ip in ["::", "::1"]:
+                with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as sock:
+                    try:
+                        sock.bind((ip, port))
+                    except OSError:
+                        return False
+                        
+        return True

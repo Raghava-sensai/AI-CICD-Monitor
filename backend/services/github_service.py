@@ -22,6 +22,44 @@ class GithubService:
         }
 
     # ------------------------------------------------------------------
+    # Authentication & Validation
+    # ------------------------------------------------------------------
+    
+    @classmethod
+    def validate_token(cls, token: str) -> dict:
+        """
+        Validate a user PAT against GitHub.
+        Returns {"valid": True, "username": str, "account_type": str, "scopes": list} on success.
+        """
+        if not token:
+            return {"valid": False, "error": "No token provided"}
+            
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        
+        try:
+            response = requests.get(f"{GITHUB_API_BASE}/user", headers=headers, timeout=5)
+            if response.status_code != 200:
+                return {"valid": False, "error": f"GitHub API rejected token (HTTP {response.status_code})"}
+                
+            data = response.json()
+            scopes = response.headers.get("X-OAuth-Scopes", "")
+            scope_list = [s.strip() for s in scopes.split(",")] if scopes else []
+            
+            return {
+                "valid": True,
+                "username": data.get("login"),
+                "account_type": data.get("type"),
+                "scopes": scope_list
+            }
+        except Exception as e:
+            logger.error(f"Error validating GitHub token: {e}")
+            return {"valid": False, "error": str(e)}
+
+    # ------------------------------------------------------------------
     # Webhook Event Handlers
     # ------------------------------------------------------------------
 
@@ -41,7 +79,7 @@ class GithubService:
             "branch": branch,
             "commit_sha": commit_sha,
             "pusher": pusher,
-            "should_deploy": branch in ("main", "master", "production"),
+            "should_deploy": branch in ("main", "master"),
         }
 
     def handle_pr_event(self, payload: dict) -> dict:

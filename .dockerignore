@@ -1,0 +1,7 @@
+deployment_storage/
+test_projects/
+logs/
+reports/
+backend/__pycache__/
+.git/
+.pytest_cache/

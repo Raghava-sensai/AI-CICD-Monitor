@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/:match*",
+      "destination": "https://YOUR_BACKEND_URL.com/api/:match*"
+    }
+  ]
+}

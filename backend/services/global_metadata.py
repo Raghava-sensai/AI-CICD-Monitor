@@ -17,9 +17,7 @@ from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-STORAGE_DIR = os.path.join(
-    os.path.dirname(__file__), "..", "..", "deployment_storage"
-)
+STORAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "deployment_storage"))
 METADATA_DIR = os.path.join(STORAGE_DIR, "metadata")
 GLOBAL_FILE = os.path.join(METADATA_DIR, "global.json")
 
@@ -28,7 +26,10 @@ _DEFAULTS = {
     "previous_deployment": None,
     "total_deployments": 0,
     "total_rollbacks": 0,
+    "failed_deployments": 0,
+    "recovery_times": [],
     "last_successful": None,
+    "last_failure_time": None, # used to calculate recovery time
 }
 
 
@@ -79,23 +80,46 @@ def on_deployment_success(deployment_id: str) -> None:
     data["previous_deployment"] = old_active
     data["active_deployment"] = deployment_id
     data["last_successful"] = deployment_id
+    
+    # Calculate recovery time if recovering from failure
+    import time
+    if data.get("last_failure_time"):
+        recovery_s = time.time() - data["last_failure_time"]
+        data["recovery_times"].append(recovery_s)
+        data["last_failure_time"] = None
+        
     _write(data)
     logger.info(
         f"Global state: active={deployment_id} "
         f"previous={old_active}"
     )
 
+def on_deployment_failed(deployment_id: str) -> None:
+    """Track failure for metrics."""
+    data = _read()
+    data["failed_deployments"] += 1
+    import time
+    # Only set if not already recovering
+    if not data.get("last_failure_time"):
+        data["last_failure_time"] = time.time()
+    _write(data)
 
 def on_rollback(restored_id: str) -> None:
     """
     Swap active ↔ previous and increment rollback counter.
     """
     data = _read()
-    # The failed deployment's ID is currently active — demote it
     failed_active = data.get("active_deployment")
     data["previous_deployment"] = failed_active
     data["active_deployment"] = restored_id
     data["total_rollbacks"] += 1
+    
+    import time
+    if data.get("last_failure_time"):
+        recovery_s = time.time() - data["last_failure_time"]
+        data["recovery_times"].append(recovery_s)
+        data["last_failure_time"] = None
+        
     _write(data)
     logger.info(
         f"Global state after rollback: active={restored_id} "

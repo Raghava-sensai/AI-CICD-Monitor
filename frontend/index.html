@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>AI-CICD-Monitor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#0d0f1a;--surface:#13162a;--surface2:#1a1e35;--surface3:#20253e;
+      --border:rgba(255,255,255,.07);--border2:rgba(255,255,255,.12);
+      --accent:#6c63ff;--accent2:#00d4aa;--accent3:#ff6b6b;--accent4:#ffa94d;
+      --text:#e8eaf0;--muted:#7a7f99;
+      --radius:14px;
+      --status-pass: #00d4aa;
+      --status-run: #ffa94d;
+      --status-fail: #ff6b6b;
+      --status-skip: #7a7f99;
+      --status-roll: #6c63ff;
+    }
+    body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+    body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+      background:radial-gradient(ellipse 80% 50% at 20% -10%,rgba(108,99,255,.15) 0%,transparent 60%),
+                 radial-gradient(ellipse 60% 40% at 80% 110%,rgba(0,212,170,.1) 0%,transparent 60%)}
+    .wrap{position:relative;z-index:1;max-width:1200px;margin:0 auto;padding:0 24px 80px}
+
+    /* Header */
+    header{padding:48px 0 36px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+    .logo{width:50px;height:50px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:14px;display:grid;place-items:center;font-size:24px;box-shadow:0 8px 28px rgba(108,99,255,.4);flex-shrink:0}
+    .title-block h1{font-size:1.9rem;font-weight:800;letter-spacing:-.5px}
+    .title-block h1 span{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .title-block p{color:var(--muted);font-size:.9rem;margin-top:3px}
+    .badge{margin-left:auto;display:flex;align-items:center;gap:8px;background:rgba(0,212,170,.1);border:1px solid rgba(0,212,170,.3);color:var(--accent2);padding:6px 14px;border-radius:999px;font-size:.8rem;font-weight:600}
+    
+    /* Tabs */
+    .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:4px;margin-bottom:28px;width:fit-content}
+    .tab{padding:8px 20px;border-radius:9px;cursor:pointer;font-size:.85rem;font-weight:500;color:var(--muted);border:none;background:none;transition:all .2s}
+    .tab.active{background:var(--surface2);color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,.3)}
+    .tab-panel{display:none}.tab-panel.active{display:block}
+
+    /* Deployments List */
+    .dep-table{width:100%;border-collapse:collapse;margin-top:10px}
+    .dep-table th{text-align:left;padding:12px 16px;color:var(--muted);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border)}
+    .dep-table td{padding:16px;border-bottom:1px solid var(--border);font-size:.85rem;vertical-align:middle;cursor:pointer;transition:background .2s}
+    .dep-table tr:hover td{background:rgba(255,255,255,.02)}
+    
+    .status-badge{padding:4px 10px;border-radius:20px;font-size:.75rem;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+    .s-pass{background:rgba(0,212,170,.1);color:var(--status-pass);border:1px solid rgba(0,212,170,.2)}
+    .s-fail{background:rgba(255,107,107,.1);color:var(--status-fail);border:1px solid rgba(255,107,107,.2)}
+    .s-run{background:rgba(255,169,77,.1);color:var(--status-run);border:1px solid rgba(255,169,77,.2)}
+    .s-roll{background:rgba(108,99,255,.1);color:var(--status-roll);border:1px solid rgba(108,99,255,.2)}
+    .s-recov{background:rgba(255,0,0,.2);color:#ff4444;border:1px solid rgba(255,0,0,.4)}
+    
+    /* Deployment Detail Header */
+    .detail-header{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center}
+    .back-btn{background:none;border:none;color:var(--muted);font-size:.85rem;cursor:pointer;display:flex;align-items:center;gap:6px;margin-bottom:16px}
+    .back-btn:hover{color:var(--text)}
+
+    /* Alerts */
+    .alert{border-radius:10px;padding:16px 20px;margin-bottom:24px;display:none;border:1px solid transparent}
+    .alert-rollback{background:rgba(108,99,255,.1);border-color:rgba(108,99,255,.3);display:flex;align-items:flex-start;gap:16px}
+    .alert-rollback .icon{font-size:24px;color:var(--status-roll)}
+    .alert-rollback h4{color:var(--status-roll);margin-bottom:4px}
+    .alert-rollback p{color:var(--text);font-size:.85rem;line-height:1.5}
+
+    /* Root Cause Panel */
+    .root-cause{background:rgba(255,107,107,.05);border:1px solid rgba(255,107,107,.2);border-radius:var(--radius);padding:24px;margin-bottom:24px;display:none}
+    .rc-header{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+    .rc-icon{width:40px;height:40px;background:rgba(255,107,107,.1);border-radius:10px;display:grid;place-items:center;color:var(--status-fail);font-size:20px}
+    .rc-title h3{font-size:1.1rem;color:var(--status-fail)}
+    .rc-title .severity{font-size:.7rem;padding:2px 8px;border-radius:4px;background:rgba(255,107,107,.2);color:#fff;font-weight:700;margin-top:4px;display:inline-block}
+    
+    .rc-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+    .rc-box{background:var(--surface2);padding:16px;border-radius:10px;border:1px solid var(--border)}
+    .rc-box h4{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+    .rc-box p{font-size:.9rem;line-height:1.5;color:var(--text)}
+    
+    /* Technical Details Expandable */
+    .tech-details{margin-top:16px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+    .tech-header{padding:12px 16px;background:var(--surface2);font-size:.8rem;font-weight:600;cursor:pointer;display:flex;justify-content:space-between}
+    .tech-header:hover{background:var(--surface3)}
+    .tech-body{padding:16px;background:#000;font-family:'JetBrains Mono',monospace;font-size:.75rem;color:#a8b4d8;display:none;white-space:pre-wrap;overflow-x:auto}
+    .tech-details.open .tech-body{display:block}
+
+    /* Two-column layout for visual pipeline & timeline */
+    .story-layout{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:40px}
+    
+    /* Visual Pipeline */
+    .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px}
+    .panel-title{font-size:1rem;font-weight:600;margin-bottom:20px;display:flex;align-items:center;gap:10px}
+    
+    .stage-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;display:flex;align-items:center;gap:16px;position:relative}
+    .stage-card::before{content:'';position:absolute;left:28px;top:-13px;height:14px;width:2px;background:var(--border)}
+    .stage-card:first-child::before{display:none}
+    
+    .st-icon{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:bold;z-index:1}
+    .ic-pass{background:var(--status-pass);color:#000}
+    .ic-warn{background:var(--status-run);color:#000}
+    .ic-run{background:var(--status-run);color:#000;animation:pulse 2s infinite}
+    .ic-fail{background:var(--status-fail);color:#000}
+    .ic-skip{background:var(--status-skip);color:#fff}
+    
+    .st-info{flex:1}
+    .st-name{font-weight:600;font-size:.9rem}
+    .st-dur{font-size:.75rem;color:var(--muted);margin-top:2px}
+
+    /* Timeline */
+    .timeline{font-family:'JetBrains Mono',monospace;font-size:.8rem}
+    .tl-event{display:flex;gap:16px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px dashed var(--border)}
+    .tl-time{color:var(--muted);flex-shrink:0}
+    .tl-desc{color:var(--text)}
+    .tl-desc span{display:inline-block;padding:2px 6px;border-radius:4px;font-size:.7rem;margin-left:8px}
+
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">&#x1F680;</div>
+    <div class="title-block">
+      <h1>AI-CICD-<span>Monitor</span></h1>
+      <p>Automated deployment &amp; AI-powered pipeline diagnostics</p>
+    </div>
+    <div class="badge"><span class="dot"></span>v2.0.0 &nbsp;NARRATIVE UI</div>
+    <div style="margin-left: 20px; display: flex; gap: 8px;">
+      <select id="simScenario" style="padding: 6px; border-radius: 8px; background: var(--surface2); color: var(--text); border: 1px solid var(--border);">
+        <option value="SUCCESS">Simulate Success</option>
+        <option value="CLONE_FAILURE">Simulate Clone Failure</option>
+        <option value="STARTUP_FAILURE">Simulate Startup Crash</option>
+        <option value="HEALTH_CHECK_FAILURE">Simulate Health Check Failure</option>
+        <option value="SSL_FAILURE">Simulate SSL Failure</option>
+      </select>
+      <button onclick="triggerSimulator()" style="padding: 6px 14px; border-radius: 8px; background: var(--accent); color: white; border: none; cursor: pointer;">Simulate</button>
+    </div>
+  </header>
+
+  <div id="main-view">
+    <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;margin-bottom:28px">
+      <div class="stat-card" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+        <div style="font-size:0.8rem;color:var(--muted);margin-bottom:8px">Total Deployments</div>
+        <div id="dep-count" style="font-size:1.8rem;font-weight:700">0</div>
+      </div>
+      <div class="stat-card" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+        <div style="font-size:0.8rem;color:var(--muted);margin-bottom:8px">Success Rate</div>
+        <div id="success-rate" style="font-size:1.8rem;font-weight:700">0%</div>
+      </div>
+      <div class="stat-card" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+        <div style="font-size:0.8rem;color:var(--muted);margin-bottom:8px">Avg Recovery Time</div>
+        <div id="mrt" style="font-size:1.8rem;font-weight:700">0s</div>
+      </div>
+      <div class="stat-card" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+        <div style="font-size:0.8rem;color:var(--muted);margin-bottom:8px">Rollbacks Triggered</div>
+        <div id="rollback-count" style="font-size:1.8rem;font-weight:700">0</div>
+      </div>
+      <div class="stat-card" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+        <div style="font-size:0.8rem;color:var(--muted);margin-bottom:8px">Active Projects</div>
+        <div id="proj-count" style="font-size:1.8rem;font-weight:700">0</div>
+      </div>
+      <div class="stat-card" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+        <div style="font-size:0.8rem;color:var(--muted);margin-bottom:8px">CPU Load</div>
+        <div id="cpu" style="font-size:1.8rem;font-weight:700;color:var(--accent2)">N/A</div>
+      </div>
+      <div class="stat-card" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+        <div style="font-size:0.8rem;color:var(--muted);margin-bottom:8px">Memory Usage</div>
+        <div id="mem" style="font-size:1.8rem;font-weight:700;color:var(--accent2)">N/A</div>
+      </div>
+      <div class="stat-card" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+        <div style="font-size:0.8rem;color:var(--muted);margin-bottom:8px">Disk Space</div>
+        <div id="disk" style="font-size:1.8rem;font-weight:700;color:var(--accent2)">N/A</div>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('deployments')">🚀 Deployments</button>
+      <button class="tab" onclick="switchTab('upload')">📦 Upload Project</button>
+      <button class="tab" onclick="switchTab('github')">🐙 GitHub URL</button>
+      <button class="tab" onclick="switchTab('guide')">📖 User Guide</button>
+      <button class="tab" onclick="switchTab('docs')">📄 deployment.txt Docs</button>
+    </div>
+
+    <!-- Deployments List -->
+    <div id="tab-deployments" class="tab-panel active">
+      <div class="panel">
+        <h2 class="panel-title">Recent Deployments</h2>
+        <table class="dep-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Repository</th>
+              <th>Branch</th>
+              <th>Status</th>
+              <th>Link</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody id="dep-list">
+            <tr><td colspan="6" style="text-align:center;color:var(--muted)">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Upload -->
+    <div id="tab-upload" class="tab-panel">
+       <div class="panel">
+          <h2 class="panel-title">Upload ZIP Project</h2>
+          <input type="file" id="zipFile" style="margin-bottom:16px;display:block">
+          <button onclick="uploadProject()" style="padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer">Upload & Deploy</button>
+          <pre id="upload-result" style="margin-top:20px;font-size:.8rem;color:var(--muted)"></pre>
+       </div>
+    </div>
+
+    <!-- GitHub URL -->
+    <div id="tab-github" class="tab-panel">
+       <div class="panel">
+          <h2 class="panel-title">Deploy from GitHub URL</h2>
+          <input type="text" id="githubUrl" placeholder="https://github.com/username/repo" style="margin-bottom:16px;display:block;width:100%;max-width:500px;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
+          <input type="text" id="githubBranch" placeholder="Branch (e.g. main)" value="main" style="margin-bottom:16px;display:block;width:100%;max-width:500px;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
+          <input type="password" id="githubToken" placeholder="GitHub Personal Access Token (PAT)" style="margin-bottom:16px;display:block;width:100%;max-width:500px;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
+          <label style="display:block; margin-bottom: 16px; font-size: 0.8rem; color: var(--muted);">
+             <input type="checkbox" id="saveToken" checked> Save token locally for future deployments
+          </label>
+          <button onclick="deployGithub()" style="padding:10px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer">Deploy From GitHub</button>
+          <pre id="github-result" style="margin-top:20px;font-size:.8rem;color:var(--muted)"></pre>
+       </div>
+    </div>
+
+    <div id="tab-guide" class="tab-panel">
+       <div class="panel">
+          <h2 class="panel-title">📖 Understanding the Monitor</h2>
+          
+          <h3 style="font-size:1.1rem;margin-bottom:10px;margin-top:20px;color:var(--text)">Deployment Statuses</h3>
+          <ul style="line-height:1.6;margin-left:20px;margin-bottom:20px;color:var(--muted)">
+             <li><span class="status-badge s-pass" style="font-size:0.7rem;margin-right:8px;padding:2px 6px">Healthy</span> The code successfully compiled, the container started, and the application responded to the health check ping.</li>
+             <li><span class="status-badge s-warn" style="font-size:0.7rem;margin-right:8px;padding:2px 6px;background:rgba(235,163,54,0.1);color:var(--warn)">Warnings</span> The container successfully built and is running, but the application health check failed. This usually means the application is running, but listening on an unexpected port inside the container, or it took too long to boot.</li>
+             <li><span class="status-badge s-fail" style="font-size:0.7rem;margin-right:8px;padding:2px 6px">Failed</span> The pipeline crashed entirely. This means the code couldn't be cloned, the Dockerfile failed to build, or the container crashed immediately on startup.</li>
+          </ul>
+
+          <h3 style="font-size:1.1rem;margin-bottom:10px;margin-top:30px;color:var(--text)">Common Pipeline Errors & Root Causes</h3>
+          <div style="display:flex;flex-direction:column;gap:16px;">
+             <div style="background:var(--surface2);padding:16px;border-radius:10px;border:1px solid var(--border)">
+                <h4 style="font-size:.9rem;color:var(--status-fail);margin-bottom:8px">1. Repository Checkout Timeout (120s)</h4>
+                <p style="font-size:.85rem;line-height:1.5;color:var(--muted)"><strong>Meaning:</strong> The pipeline could not download your code.<br><strong>Root Cause:</strong> This is almost always an authentication issue. If deploying a private repository, ensure you have provided a valid GitHub Personal Access Token. Without it, Git prompts for a password in the background and waits until the pipeline times out.</p>
+             </div>
+             
+             <div style="background:var(--surface2);padding:16px;border-radius:10px;border:1px solid var(--border)">
+                <h4 style="font-size:.9rem;color:var(--status-fail);margin-bottom:8px">2. Port Allocation Conflicts (e.g. Connection Refused / Port in Use)</h4>
+                <p style="font-size:.85rem;line-height:1.5;color:var(--muted)"><strong>Meaning:</strong> Docker failed to start the deployment container because the required port is already taken.<br><strong>Root Cause:</strong> Usually caused by hardcoded port configurations in docker-compose files. Ensure you only expose the absolutely necessary ports. The AI-CICD-Monitor handles dynamic port routing automatically to prevent these collisions.</p>
+             </div>
+             
+             <div style="background:var(--surface2);padding:16px;border-radius:10px;border:1px solid var(--border)">
+                <h4 style="font-size:.9rem;color:var(--warn);margin-bottom:8px">3. Health Check: Connection Refused</h4>
+                <p style="font-size:.85rem;line-height:1.5;color:var(--muted)"><strong>Meaning:</strong> The container is running perfectly fine, but the URL pinged by the monitor timed out or was refused.<br><strong>Root Cause:</strong> This is usually a mismatched port configuration. For example, if you deploy a static website using Nginx, Nginx binds to port 80 <em>inside</em> the container. If the health checker incorrectly probes port 8100 <em>inside</em> the container, the connection is refused, resulting in a 'Deployed with Warnings' status.</p>
+             </div>
+             
+             <div style="background:var(--surface2);padding:16px;border-radius:10px;border:1px solid var(--border)">
+                <h4 style="font-size:.9rem;color:var(--status-run);margin-bottom:8px">4. Dashboard Stuck on "Loading..."</h4>
+                <p style="font-size:.85rem;line-height:1.5;color:var(--muted)"><strong>Meaning:</strong> The frontend dashboard couldn't load or update the latest logs from the Python backend.<br><strong>Root Cause:</strong> Usually caused by aggressive browser caching of API endpoints, or a JavaScript crash. It can also occur if you modify the UI code but forget to rebuild the backend docker container (<code>docker compose up -d --build</code>) to serve the new HTML.</p>
+             </div>
+           
+           <h3 style="font-size:1.1rem;margin-bottom:10px;margin-top:30px;color:var(--text)">Deployment Templates (deployment.txt)</h3>
+           <p style="font-size:0.85rem;color:var(--muted);margin-bottom:16px;">Copy and paste these templates into the root of your repository as <code>deployment.txt</code>.</p>
+           <div id="templates-container" style="display:grid;grid-template-columns:1fr;gap:16px;">
+              <div style="text-align:center;color:var(--muted)">Loading templates...</div>
+           </div>
+         </div>
+       </div>
+    </div>
+
+    <!-- Deployment.txt Docs Tab -->
+    <div id="tab-docs" class="tab-panel">
+       <div class="panel">
+          <h2 class="panel-title">📄 Writing your deployment.txt</h2>
+          
+          <p style="font-size:0.9rem;color:var(--muted);margin-bottom:20px;line-height:1.6">
+            The AI-CICD-Monitor uses a strict, language-agnostic deployment configuration. 
+            <strong>It does not guess your framework or language.</strong> You must explicitly tell the engine exactly how to build and start your application using <code>deployment.txt</code>.
+          </p>
+
+          <h3 style="font-size:1.1rem;margin-bottom:10px;margin-top:20px;color:var(--text)">Required Variables</h3>
+          <ul style="line-height:1.6;margin-left:20px;margin-bottom:20px;color:var(--muted)">
+             <li><code>project_name</code>: A unique, URL-safe name for your application (e.g., <code>project_name=my-app</code>).</li>
+          </ul>
+
+          <h3 style="font-size:1.1rem;margin-bottom:10px;margin-top:20px;color:var(--text)">Optional Variables & Special Cases</h3>
+          <ul style="line-height:1.6;margin-left:20px;margin-bottom:20px;color:var(--muted)">
+             <li><code>ssl</code>: Set to <code>true</code> to automatically provision a Let's Encrypt certificate via Nginx.</li>
+             <li><code>domain</code>: A custom domain (e.g., <code>domain=api.myapp.com</code>). If omitted, a wildcard subdomain is generated automatically.</li>
+             <li><code>health_check</code>: The HTTP path to verify success (e.g., <code>health_check=/api/health</code>). Defaults to <code>/</code>.</li>
+             <li><code>rollback_enabled</code>: Set to <code>true</code> to automatically revert the symlink if the deployment fails health checks.</li>
+             <li><code>working_directory</code>: Used in Monorepo blocks (e.g., <code>working_directory=frontend</code>) to specify where the build/start commands execute.</li>
+          </ul>
+
+          <h3 style="font-size:1.1rem;margin-bottom:10px;margin-top:30px;color:var(--text)">Multi-Line Execution Blocks</h3>
+          <p style="font-size:0.9rem;color:var(--muted);margin-bottom:20px;line-height:1.6">
+             Instead of cramming long shell scripts into a single line, use Markdown Headers and Codeblocks to write your build and start scripts naturally. The engine executes these exactly as written using the dedicated <code>deployrunner</code> system user.
+          </p>
+
+          <div style="background:var(--surface2);padding:16px;border-radius:10px;border:1px solid var(--border); font-family:'JetBrains Mono', monospace; font-size:0.85rem; color:var(--muted); line-height: 1.5; margin-bottom: 20px;">
+project_name=my-node-app<br>
+port=3000<br>
+ssl=true<br>
+<br>
+<span style="color:var(--accent)">## Build Command</span><br>
+<span style="color:#666">```bash</span><br>
+<span style="color:#eee">npm install<br>
+npm run build</span><br>
+<span style="color:#666">```</span><br>
+<br>
+<span style="color:var(--accent)">## Start Command</span><br>
+<span style="color:#666">```bash</span><br>
+<span style="color:#eee">npm run prod</span><br>
+<span style="color:#666">```</span>
+          </div>
+       </div>
+    </div>
+  </div>
+
+  <!-- Deployment Detail View -->
+  <div id="detail-view" style="display:none">
+    <button class="back-btn" onclick="closeDetail()">&#x2190; Back to Deployments</button>
+    
+    <div class="detail-header">
+      <div class="header-section">
+        <div style="flex:1">
+          <h2>Deployment <span id="d-id">Loading...</span></h2>
+          <div class="meta" id="d-meta">Loading metadata...</div>
+          <div id="d-score" style="margin-top:8px; font-weight:600; font-size:1.1rem; color:var(--text)"></div>
+        </div>
+      </div>
+      <div id="d-status-badge"></div>
+    </div>
+
+    <!-- Rollback Alert -->
+    <div class="alert alert-rollback" id="alert-rollback">
+      <div class="icon">🔄</div>
+      <div>
+        <h4>CRITICAL FAILSAFE DETECTED</h4>
+        <p>Executing rollback... System restored to previous healthy state (<span id="d-restored-id" style="font-family:monospace"></span>).</p>
+      </div>
+    </div>
+
+    <!-- Root Cause Panel -->
+    <div class="root-cause" id="rc-panel">
+      <div class="rc-header">
+        <div class="rc-icon">⚠️</div>
+        <div class="rc-title">
+          <h3 id="rc-title-text">Deployment Failed</h3>
+          <span class="severity" id="rc-severity">🔴 Critical Error</span>
+        </div>
+      </div>
+      <div class="rc-grid">
+        <div class="rc-label">WHAT FAILED?</div>
+        <div class="rc-val" id="rc-what">Loading...</div>
+      </div>
+      <div style="flex:1;min-width:200px;background:#1a1c23;padding:16px;border-radius:6px;border:1px solid var(--border)">
+        <div class="rc-label">LOCATION</div>
+        <div class="rc-val" id="rc-where" style="font-family:'JetBrains Mono',monospace;font-size:0.85rem">Unknown</div>
+      </div>
+      <div class="rc-box" style="grid-column: span 2">
+          <h4>AI Diagnosis & Remediation</h4>
+          <div id="rc-sections" style="display: flex; flex-direction: column; gap: 16px; margin-top: 12px;">
+              <div id="rc-root-cause-section" style="display: none;">
+                  <h5 style="color: var(--text); font-size: 0.85rem; margin-bottom: 4px;">ROOT CAUSE</h5>
+                  <p id="rc-root-cause" style="font-size: 0.85rem; color: var(--muted);"></p>
+              </div>
+              <div id="rc-possible-causes-section" style="display: none;">
+                  <h5 style="color: var(--text); font-size: 0.85rem; margin-bottom: 4px;">POSSIBLE CAUSES</h5>
+                  <ul id="rc-possible-causes" style="font-size: 0.85rem; color: var(--muted); margin-left: 20px;"></ul>
+              </div>
+              <div id="rc-recommendation-section" style="display: none;">
+                  <h5 style="color: var(--text); font-size: 0.85rem; margin-bottom: 4px;">RECOMMENDED ACTIONS</h5>
+                  <ul id="rc-recommendations" style="font-size: 0.85rem; color: var(--muted); margin-left: 20px;"></ul>
+              </div>
+          </div>
+      </div>
+      
+      <div class="tech-details" id="tech-details-container">
+        <div class="tech-header" onclick="toggleTech()">
+          <span>Show Technical Details (Stack Trace)</span>
+          <span id="tech-arrow">▼</span>
+        </div>
+        <div class="tech-body" id="tech-body"></div>
+      </div>
+    </div>
+
+    <!-- Story Layout -->
+    <div class="story-layout">
+      <!-- Pipeline Viz -->
+      <div class="panel">
+        <div class="panel-title">Pipeline Visualization</div>
+        <div id="pipeline-viz"></div>
+      </div>
+
+      <!-- Timeline -->
+      <div class="panel">
+        <div class="panel-title">Event Timeline</div>
+        <div class="timeline" id="pipeline-tl"></div>
+      </div>
+      <!-- Comparison -->
+      <div class="panel" style="grid-column: 1 / -1;">
+        <div class="panel-title">Performance vs Previous</div>
+        <div id="compare-viz" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;font-size:0.85rem"></div>
+      </div>
+      
+      <!-- Live Logs Terminal -->
+      <div class="panel" style="grid-column: 1 / -1;">
+        <div class="panel-title">Live Pipeline Logs</div>
+        <div id="live-logs-container" style="background:#0a0a0a; border:1px solid var(--border); border-radius:8px; padding:16px; height:400px; overflow-y:auto; font-family:'JetBrains Mono', monospace; font-size:0.8rem; color:#00d4aa; box-shadow: inset 0 0 10px rgba(0,0,0,0.8);">
+          <pre id="live-logs" style="white-space: pre-wrap; margin:0; line-height: 1.4;">>_ Waiting for pipeline execution to start...</pre>
+        </div>
+      </div>
+      
+      <!-- Footer Link -->
+      <div id="d-url-container" style="display:none; grid-column: 1 / -1; background: var(--surface2); border: 1px solid var(--accent); border-radius: 8px; padding: 16px; text-align: center; margin-top: 10px; box-shadow: 0 4px 15px rgba(0,212,170,0.1);">
+        <h3 style="margin:0 0 8px 0; color:var(--accent);">Application Deployed Successfully</h3>
+        <a id="d-url-link" href="#" target="_blank" style="display:inline-block; background:var(--accent); color:var(--bg); padding:10px 24px; border-radius:6px; font-weight:bold; text-decoration:none; font-size:1.1rem; transition:transform 0.2s;">Open Application &#x2197;</a>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+let detailPollInterval = null;
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (typeof event !== 'undefined' && event.target) {
+    event.target.classList.add('active');
+  }
+}
+
+function closeDetail() {
+  if (detailPollInterval) { clearInterval(detailPollInterval); detailPollInterval = null; }
+  document.getElementById('detail-view').style.display = 'none';
+  document.getElementById('main-view').style.display = 'block';
+  loadDeployments();
+}
+
+async function loadStats() {
+  try {
+    const [h, d, p, g] = await Promise.all([
+      fetch('/api/v1/monitor/health').then(r=>r.json()),
+      fetch('/api/v1/deployment/').then(r=>r.json()),
+      fetch('/api/v1/monitor/projects').then(r=>r.json()),
+      fetch('/api/v1/deployment/global').then(r=>r.json()),
+    ]);
+    document.getElementById('cpu').textContent   = h.cpu_percent   != null ? h.cpu_percent.toFixed(1)+'%'   : 'N/A';
+    document.getElementById('mem').textContent   = h.memory_percent != null ? h.memory_percent.toFixed(1)+'%' : 'N/A';
+    document.getElementById('disk').textContent  = h.disk_percent   != null ? h.disk_percent.toFixed(1)+'%'  : 'N/A';
+    document.getElementById('proj-count').textContent = Array.isArray(p.projects)    ? p.projects.length    : 0;
+    
+    // Global metrics
+    document.getElementById('dep-count').textContent  = g.total_deployments || 0;
+    document.getElementById('success-rate').textContent  = (g.success_rate || 0) + '%';
+    document.getElementById('mrt').textContent  = g.mean_recovery_time_s ? g.mean_recovery_time_s + 's' : '0s';
+    document.getElementById('rollback-count').textContent  = g.total_rollbacks || 0;
+  } catch(e) { console.error("Stats load failed", e); }
+}
+
+const API_URL = '/api/v1';
+
+// Initial load
+loadStats();
+loadDeployments();
+loadTemplates();
+
+setInterval(loadStats, 5000);
+setInterval(loadDeployments, 5000);
+
+async function loadTemplates() {
+      try {
+        const res = await fetch('/api/v1/templates/');
+        if (res.ok) {
+          const data = await res.json();
+          const container = document.getElementById('templates-container');
+          container.innerHTML = Object.entries(data).map(([key, t]) => `
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+              <div style="padding:12px 16px;background:rgba(255,255,255,0.03);border-bottom:1px solid var(--border);font-weight:600;display:flex;justify-content:space-between;align-items:center;">
+                ${t.name}
+                <button onclick="navigator.clipboard.writeText('${t.content.replace(/\n/g, '\\n')}')" style="background:var(--accent);color:white;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:0.75rem;">Copy</button>
+              </div>
+              <pre style="padding:16px;margin:0;font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:#00d4aa;white-space:pre-wrap;">${t.content}</pre>
+            </div>
+          `).join('');
+        }
+      } catch (e) {
+        console.error("Failed to load templates", e);
+      }
+    }
+async function triggerSimulator() {
+  const scenario = document.getElementById("simScenario").value;
+  try {
+    const res = await fetch(`${API_URL}/simulator/deploy`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ scenario })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      switchTab('deployments');
+      openDetail(data.deployment_id);
+    } else {
+      alert('Simulator trigger failed');
+    }
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+async function loadDeployments() {
+  try {
+    const res = await fetch('/api/v1/deployment/');
+    const data = await res.json();
+    const tbody = document.getElementById('dep-list');
+    
+    if(!data.deployments || data.deployments.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted)">No deployments yet</td></tr>';
+      return;
+    }
+
+    // Sort newest first
+    data.deployments.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+
+    tbody.innerHTML = data.deployments.map(d => {
+      let badge = '';
+      if(d.status === 'success') badge = '<span class="status-badge s-pass">🟢 Healthy</span>';
+      else if(d.status === 'failed') badge = '<span class="status-badge s-fail">🔴 Failed</span>';
+      else if(d.status === 'rolled_back') badge = '<span class="status-badge s-roll">🔵 Rolled Back</span>';
+      else if(d.status === 'recovery_required') badge = '<span class="status-badge s-recov">⚠ Recovery Required</span>';
+      else badge = '<span class="status-badge s-run">🟡 ' + d.status.toUpperCase() + '</span>';
+
+      let linkHtml = '-';
+      if(d.status === 'success' && (d.port || d.url)) {
+          const appUrl = d.url || `http://${window.location.hostname}:${d.port}`;
+          linkHtml = `<a href="${appUrl}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent);text-decoration:none;font-weight:bold;">Open &#x2197;</a>`;
+      }
+
+      const date = new Date(d.created_at).toLocaleString();
+      return `<tr onclick="openDetail('${d.deployment_id}')">
+        <td style="font-family:monospace">${d.deployment_id.substring(0,8)}</td>
+        <td><strong>${d.repo}</strong></td>
+        <td>${d.branch}</td>
+        <td>${badge}</td>
+        <td>${linkHtml}</td>
+        <td style="color:var(--muted)">${date}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+async function openDetail(id) {
+  document.getElementById('main-view').style.display = 'none';
+  document.getElementById('detail-view').style.display = 'block';
+  
+  // Reset panels
+  document.getElementById('alert-rollback').style.display = 'none';
+  document.getElementById('rc-panel').style.display = 'none';
+  document.getElementById('pipeline-viz').innerHTML = 'Loading...';
+  document.getElementById('pipeline-tl').innerHTML = 'Loading...';
+  document.getElementById('live-logs').textContent = '>_ Waiting for pipeline execution to start...';
+
+  // Initial fetch
+  await refreshDetail(id);
+  
+  // Clear any existing interval, start polling
+  if (detailPollInterval) { clearInterval(detailPollInterval); }
+  detailPollInterval = setInterval(() => { refreshDetail(id); }, 2000);
+}
+
+async function refreshDetail(id) {
+  try {
+    // Load meta
+    const res1 = await fetch(`/api/v1/deployment/${id}`);
+    const dep = await res1.json();
+    
+    document.getElementById('d-meta').textContent = `${dep.repo} • ${dep.branch}`;
+    document.getElementById('d-id').textContent = dep.deployment_id;
+
+    if (dep.status === 'success' && (dep.port || dep.url)) {
+      const appUrl = dep.url || `http://${window.location.hostname}:${dep.port}`;
+      document.getElementById('d-url-container').style.display = 'block';
+      document.getElementById('d-url-link').href = appUrl;
+      document.getElementById('d-url-link').textContent = `Open Application (${appUrl}) ↗`;
+    } else {
+      document.getElementById('d-url-container').style.display = 'none';
+    }
+
+    if(dep.status === 'success') {
+      document.getElementById('d-status-badge').innerHTML = '<span class="status-badge s-pass">🟢 Deployment Healthy</span>';
+    } else if (dep.status === 'warning') {
+      document.getElementById('d-status-badge').innerHTML = '<span class="status-badge s-warn" style="background:rgba(235,163,54,0.1);color:var(--warn)">🟡 Deployed with Warnings</span>';
+    } else if (dep.status === 'failed') {
+      document.getElementById('d-status-badge').innerHTML = '<span class="status-badge s-fail">🔴 Deployment Failed</span>';
+    } else if (dep.status === 'rolled_back') {
+      document.getElementById('d-status-badge').innerHTML = '<span class="status-badge s-roll">🔵 Rolled Back</span>';
+      document.getElementById('alert-rollback').style.display = 'flex';
+      document.getElementById('d-restored-id').textContent = dep.previous_deployment || 'unknown';
+    } else if (dep.status === 'recovery_required') {
+      document.getElementById('d-status-badge').innerHTML = '<span class="status-badge s-recov">⚠ Manual Recovery Required</span>';
+    } else {
+      document.getElementById('d-status-badge').innerHTML = `<span class="status-badge s-run">🟡 ${dep.status.toUpperCase()}</span>`;
+    }
+
+    // Load pipeline stages with cache-buster
+    const res2 = await fetch(`/api/v1/deployment/${id}/pipeline?t=${Date.now()}`);
+    const pipe = await res2.json();
+    
+    if (pipe.stages && pipe.stages.length > 0) {
+      renderVisualPipeline(pipe.stages);
+      renderTimeline(pipe.stages, dep.created_at);
+    } else {
+      document.getElementById('pipeline-viz').innerHTML = '<span style="color:var(--muted)">No stages recorded yet.</span>';
+      document.getElementById('pipeline-tl').innerHTML = '<span style="color:var(--muted)">No events.</span>';
+    }
+
+    // Comparison with previous
+    if (dep.previous_deployment) {
+      try {
+        const resPrev = await fetch(`/api/v1/deployment/${dep.previous_deployment}/pipeline?t=${Date.now()}`);
+        const pipePrev = await resPrev.json();
+        renderComparison(pipe.stages, pipePrev.stages);
+      } catch(e) {
+        document.getElementById('compare-viz').innerHTML = '<span style="color:var(--muted)">Could not load previous deployment data.</span>';
+      }
+    } else {
+      document.getElementById('compare-viz').innerHTML = '<span style="color:var(--muted)">No previous deployment to compare against.</span>';
+    }
+
+    // Live logs fetch with cache-buster
+    const logRes = await fetch(`/api/v1/deployment/${id}/log?t=${Date.now()}`);
+    const logData = await logRes.json();
+    if (logData.log && logData.log !== '(no log file yet)') {
+       const pre = document.getElementById('live-logs');
+       const container = document.getElementById('live-logs-container');
+       
+       // Calculate if we should auto-scroll
+       const isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 20;
+       
+       // Format log to look more like a terminal
+       let formattedLog = logData.log.trim();
+       pre.textContent = formattedLog;
+       
+       // Auto scroll down if user was already at the bottom
+       if (isScrolledToBottom) {
+          container.scrollTop = container.scrollHeight;
+       }
+    }
+
+    // If failed or warning, load Root Cause (Analysis)
+    if (dep.status === 'failed' || dep.status === 'warning' || dep.status === 'rolled_back') {
+      document.getElementById('rc-panel').style.display = 'block';
+      document.getElementById('rc-where').textContent = dep.failed_stage ? `Stage: ${dep.failed_stage}` : 'Unknown location';
+      
+      let diagWhat = dep.error_message || dep.error || 'Unknown Error';
+      let diagRootCause = dep.root_cause;
+      let diagPossible = dep.possible_causes || [];
+      let diagChecks = dep.suggested_checks || [];
+      let diagRec = dep.recommendation;
+
+      let analysis = null;
+      try {
+        const res3 = await fetch(`/api/v1/deployment/${id}/analysis?t=${Date.now()}`);
+        if (res3.ok) {
+          analysis = await res3.json();
+          
+          if (analysis.health_score !== undefined) {
+             document.getElementById('d-score').textContent = `Deployment Score: ${analysis.health_score}/100`;
+          }
+
+          const rcTitleObj = document.getElementById('rc-title-text');
+          const rcSeverityObj = document.getElementById('rc-severity');
+          
+          if (analysis.severity === "WARNING") {
+             rcTitleObj.textContent = "Deployment completed with warnings";
+             rcSeverityObj.textContent = "🟡 Warning";
+             rcSeverityObj.style.color = "var(--warn)";
+             rcSeverityObj.style.background = "rgba(235, 163, 54, 0.1)";
+          } else {
+             rcTitleObj.textContent = "Deployment Failed";
+             rcSeverityObj.textContent = "🔴 Critical Error";
+             rcSeverityObj.style.color = "var(--danger)";
+             rcSeverityObj.style.background = "rgba(231, 76, 60, 0.1)";
+          }
+
+          if (analysis.errors && analysis.errors.length > 0) {
+             const err = analysis.errors[0];
+             diagWhat = err.description || err.error_id;
+             diagRec = err.recommendation || diagRec;
+          }
+        }
+      } catch(err) {
+        console.error("Failed to fetch analysis", err);
+      }
+
+      document.getElementById('rc-what').textContent = diagWhat;
+      
+      const rcRootCauseSec = document.getElementById('rc-root-cause-section');
+      const rcPossibleCausesSec = document.getElementById('rc-possible-causes-section');
+      const rcRecommendationSec = document.getElementById('rc-recommendation-section');
+      
+      rcRootCauseSec.style.display = 'none';
+      rcPossibleCausesSec.style.display = 'none';
+      rcRecommendationSec.style.display = 'none';
+      
+      if (diagRootCause && diagRootCause !== 'Unknown') {
+          rcRootCauseSec.style.display = 'block';
+          document.getElementById('rc-root-cause').textContent = diagRootCause;
+      }
+      
+      if (diagPossible.length > 0) {
+          rcPossibleCausesSec.style.display = 'block';
+          document.getElementById('rc-possible-causes').innerHTML = diagPossible.map(c => `<li>${c}</li>`).join('');
+      } else if (!diagRootCause || diagRootCause === 'Unknown') {
+          rcRootCauseSec.style.display = 'block';
+          document.getElementById('rc-root-cause').textContent = 'Unknown Issue';
+      }
+      
+      if (diagChecks.length > 0) {
+          rcRecommendationSec.style.display = 'block';
+          document.getElementById('rc-recommendations').innerHTML = diagChecks.map(c => `<li>${c}</li>`).join('');
+      } else if (diagRec) {
+          rcRecommendationSec.style.display = 'block';
+          document.getElementById('rc-recommendations').innerHTML = `<li>${diagRec}</li>`;
+      }
+
+      // Load tech details (raw errors)
+      if (dep.technical_details) {
+        document.getElementById('tech-body').textContent = dep.technical_details;
+      } else if (pipe && pipe.error_summary && pipe.error_summary.length > 0) {
+        const errs = pipe.error_summary.map(e => `[${e.stage}]\n${e.snippet}`).join('\n\n');
+        document.getElementById('tech-body').textContent = errs;
+      } else {
+        document.getElementById('tech-body').textContent = 'No technical stack trace available.';
+      }
+   } // closes if dep.status block
+
+  } catch(e) { // closes main refreshDetail try block
+    console.error(e);
+  }
+}
+
+function renderVisualPipeline(stages) {
+  const viz = document.getElementById('pipeline-viz');
+  viz.innerHTML = stages.map(s => {
+    let icon = '⚫', icClass = 'ic-skip', durText = s.duration ? `(${s.duration}s)` : '';
+    let label = 'Unknown';
+    
+    if (s.status === 'success') { icon = '✓'; icClass = 'ic-pass'; label = 'Passed'; }
+    else if (s.status === 'failed') { icon = '✗'; icClass = 'ic-fail'; label = 'Failed'; }
+    else if (s.status === 'warning') { icon = '⚠'; icClass = 'ic-warn'; label = 'Soft Fail'; }
+    else if (s.status === 'skipped') { icon = '⏭'; icClass = 'ic-skip'; label = 'Skipped'; }
+    
+    return `<div class="stage-card">
+      <div class="st-icon ${icClass}">${icon}</div>
+      <div class="st-info">
+        <div class="st-name">${s.stage} <span style="font-weight:normal;color:var(--muted)">${label}</span></div>
+        <div class="st-dur">${durText}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderTimeline(stages, startIso) {
+  const tl = document.getElementById('pipeline-tl');
+  let html = `<div class="tl-event"><div class="tl-time">${fmtTime(startIso)}</div><div class="tl-desc">Deployment Started</div></div>`;
+  
+  stages.forEach(s => {
+    if(!s.ended_at) return;
+    let badge = '';
+    if(s.status === 'success') badge = '<span style="background:rgba(0,212,170,.15);color:var(--status-pass)">Passed</span>';
+    else if(s.status === 'failed') badge = '<span style="background:rgba(255,107,107,.15);color:var(--status-fail)">Failed</span>';
+    else badge = '<span style="background:rgba(255,169,77,.15);color:var(--status-run)">Warning</span>';
+
+    html += `<div class="tl-event"><div class="tl-time">${fmtTime(s.ended_at)}</div><div class="tl-desc">${s.stage} ${badge}</div></div>`;
+  });
+  tl.innerHTML = html;
+}
+
+function renderComparison(curr, prev) {
+  if (!curr || !prev) return;
+  const viz = document.getElementById('compare-viz');
+  
+  let html = '';
+  curr.forEach(c => {
+    if (!c.duration) return;
+    const p = prev.find(x => x.stage === c.stage);
+    if (!p || !p.duration) return;
+    
+    const diff = c.duration - p.duration;
+    const isFaster = diff < 0;
+    const diffText = diff === 0 ? 'Same' : (isFaster ? `${Math.abs(diff).toFixed(1)}s faster` : `${Math.abs(diff).toFixed(1)}s slower`);
+    const diffColor = diff === 0 ? 'var(--muted)' : (isFaster ? 'var(--status-pass)' : 'var(--status-run)');
+    
+    html += `<div style="background:var(--surface2);padding:12px;border:1px solid var(--border);border-radius:8px">
+      <div style="color:var(--muted);font-size:0.75rem;margin-bottom:6px">${c.stage}</div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span>Current:</span><strong>${c.duration}s</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;color:var(--muted)">
+        <span>Previous:</span><span>${p.duration}s</span>
+      </div>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);color:${diffColor};font-weight:600;font-size:0.75rem">
+        ${isFaster ? '▼' : (diff===0?'-':'▲')} ${diffText}
+      </div>
+    </div>`;
+  });
+  
+  viz.innerHTML = html || '<span style="color:var(--muted)">No matching stages with duration to compare.</span>';
+}
+
+function fmtTime(iso) {
+  if(!iso) return '--:--:--';
+  const d = new Date(iso);
+  return d.toLocaleTimeString('en-US', {hour12:false});
+}
+
+function toggleTech() {
+  const c = document.getElementById('tech-details-container');
+  const a = document.getElementById('tech-arrow');
+  c.classList.toggle('open');
+  a.textContent = c.classList.contains('open') ? '▲' : '▼';
+}
+
+async function uploadProject() {
+    const file = document.getElementById("zipFile").files[0];
+    if (!file) { alert("Please choose a ZIP file."); return; }
+    const out = document.getElementById("upload-result");
+    out.textContent = "Uploading project...";
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("name", file.name);
+    
+    let token = localStorage.getItem("githubToken") || "";
+    const headers = {};
+    if (token) headers["X-GitHub-Token"] = token;
+
+    try {
+        const res = await fetch("/api/v1/deployment/upload", { 
+            method: "POST", 
+            headers: headers,
+            body: formData 
+        });
+        if (!res.ok) {
+            const text = await res.text();
+            try {
+                const errData = JSON.parse(text);
+                throw new Error(errData.error || "Unknown error");
+            } catch (e) {
+                if (res.status === 404) throw new Error("Endpoint not found. Did you restart the Python backend after adding the new route?");
+                throw new Error(`Server error ${res.status}: ${text.substring(0, 40)}...`);
+            }
+        }
+        const data = await res.json();
+        out.textContent = JSON.stringify(data, null, 2);
+        if (data.deployment_id) {
+           setTimeout(() => { openDetail(data.deployment_id); }, 1500);
+        }
+    } catch (err) {
+        out.textContent = "Upload failed: " + err.message;
+    }
+}
+
+async function deployGithub() {
+    const url = document.getElementById("githubUrl").value;
+    const branch = document.getElementById("githubBranch").value || "main";
+    const token = document.getElementById("githubToken").value;
+    
+    if (!url) { alert("Please enter a GitHub URL."); return; }
+    
+    if (document.getElementById("saveToken").checked && token) {
+        localStorage.setItem("githubToken", token);
+    } else {
+        localStorage.removeItem("githubToken");
+    }
+
+    const out = document.getElementById("github-result");
+    out.textContent = "Triggering deployment...";
+
+    try {
+        const res = await fetch("/api/v1/deployment/github", { 
+            method: "POST", 
+            headers: { 
+                "Content-Type": "application/json",
+                "X-GitHub-Token": token
+            },
+            body: JSON.stringify({ repo_url: url, branch: branch })
+        });
+        
+        if (!res.ok) {
+            const text = await res.text();
+            try {
+                const errData = JSON.parse(text);
+                throw new Error(errData.error || "Unknown error");
+            } catch (e) {
+                if (res.status === 404) throw new Error("Endpoint not found. You need to restart the Python backend server for the new route to take effect.");
+                throw new Error(`Server error ${res.status}: ${text.substring(0, 40)}...`);
+            }
+        }
+        
+        const data = await res.json();
+        out.textContent = JSON.stringify(data, null, 2);
+        if (data.result && data.result.deployment_id) {
+           setTimeout(() => { openDetail(data.result.deployment_id); }, 1500);
+        }
+    } catch (err) {
+        out.textContent = "Deployment failed: " + err.message;
+    }
+}
+
+// Initial load
+loadDeployments();
+// Auto refresh deployments list every 5s if on main view
+setInterval(() => {
+  if(document.getElementById('main-view').style.display !== 'none') {
+    loadDeployments();
+  }
+}, 5000);
+
+document.addEventListener("DOMContentLoaded", () => {
+    const savedToken = localStorage.getItem("githubToken");
+    if (savedToken && document.getElementById("githubToken")) {
+        document.getElementById("githubToken").value = savedToken;
+    }
+});
+</script>
+</body>
+</html>

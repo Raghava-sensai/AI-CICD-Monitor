@@ -14,9 +14,7 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 
-STORAGE_DIR = os.path.join(
-    os.path.dirname(__file__), "..", "..", "deployment_storage"
-)
+STORAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "deployment_storage"))
 ROLLBACK_DIR = os.path.join(STORAGE_DIR, "rollback")
 HISTORY_FILE = os.path.join(ROLLBACK_DIR, "rollback_history.json")
 

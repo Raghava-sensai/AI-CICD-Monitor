@@ -100,7 +100,7 @@ pip install -r requirements.txt
 
 ```bash
 # GitHub integration
-set GITHUB_TOKEN=ghp_xxxxxxxxxxxx
+set GITHUB_TOKEN=REPLACE_WITH_GITHUB_PAT
 set GITHUB_WEBHOOK_SECRET=your_secret
 
 # AI Error Solver (pick one)

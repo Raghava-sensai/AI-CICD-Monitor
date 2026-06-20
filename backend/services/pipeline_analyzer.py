@@ -63,29 +63,74 @@ class PipelineAnalyzer:
         warnings = self._find_issues(lines, WARNING_MAPPINGS)
         stages = self._extract_stages(lines)
         
-        # Calculate health score (0-100)
-        critical_count = sum(1 for e in errors if "Critical" in e["severity"])
-        high_count = sum(1 for e in errors if "High" in e["severity"])
-        medium_count = sum(1 for e in errors if "Medium" in e["severity"])
-        low_count = len(warnings)
+        # Stage-based scoring
+        stage_weights = {
+            "Repository Checkout": 20,
+            "Deploy Static Files": 25,
+            "Install Dependencies": 25, # Default to 25 unless build is present
+            "Build": 15,
+            "Build (Maven)": 25,
+            "Build (cargo)": 25,
+            "Download Dependencies": 10,
+            "Start Application": 25,
+            "Health Check": 30
+        }
         
-        score = 100 - (critical_count * 25) - (high_count * 10) - (medium_count * 5) - (low_count * 2)
-        health_score = max(0, min(100, score))
+        has_build = any(s["name"] in ["Build", "TypeScript Compile"] for s in stages)
         
-        overall_status = "FAILED"
-        if health_score == 100 and not any(s["status"] == "failed" for s in stages):
+        earned = 0
+        failed_stage_name = None
+        for s in stages:
+            if s["status"] == "success":
+                w = stage_weights.get(s["name"], 0)
+                if s["name"] == "Install Dependencies" and has_build:
+                    w = 10
+                elif s["name"] == "TypeScript Compile":
+                    w = 15
+                earned += w
+            elif s["status"] in ["failed", "warning"]:
+                failed_stage_name = s["name"]
+                
+        health_score = min(100, earned)
+        
+        if health_score == 100 and not failed_stage_name:
             overall_status = "SUCCESS"
-        elif len(errors) == 0 and len(warnings) > 0 and not any(s["status"] == "failed" for s in stages):
+            severity = "SUCCESS"
+        elif health_score >= 50:
             overall_status = "WARNING"
+            severity = "WARNING"
+        else:
+            overall_status = "CRITICAL"
+            severity = "CRITICAL"
+            
+        if failed_stage_name == "Health Check":
+            errors.insert(0, {
+                "error_id": "HEALTH-CHECK-FAIL",
+                "line_number": -1,
+                "severity": "Warning 🟡",
+                "problem": "Application health check failed.",
+                "why_it_happened": "Possible causes: Wrong port mapping, Slow startup, Health endpoint missing.",
+                "fix": "Ensure the application binds to the correct port (0.0.0.0) and responds with 200 OK."
+            })
+        elif failed_stage_name and not errors:
+            errors.insert(0, {
+                "error_id": "STAGE-FAIL",
+                "line_number": -1,
+                "severity": "Critical 🔴" if severity == "CRITICAL" else "Warning 🟡",
+                "problem": f"Pipeline failed at stage: {failed_stage_name}",
+                "why_it_happened": "Review the pipeline logs for more details.",
+                "fix": "Check the stack trace to identify the root cause."
+            })
 
         logger.info(
             f"Pipeline analysis for project {project_id}: "
-            f"Score {health_score}, {len(errors)} errors, {len(warnings)} warnings."
+            f"Score {health_score}, Severity {severity}, {len(errors)} errors, {len(warnings)} warnings."
         )
 
         return {
             "project_id": project_id,
             "overall_status": overall_status,
+            "severity": severity,
             "health_score": health_score,
             "error_count": len(errors),
             "warning_count": len(warnings),

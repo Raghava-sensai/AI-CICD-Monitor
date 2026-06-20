@@ -1,0 +1,7 @@
+project_name=Universal-Recommendation-Engine
+start_command=python web_app.py
+project_name = ai-recommendation-system
+start_command = python web_app.py
+============================================================
+ UNIVERSAL AI RECOMMENDATION SYSTEM - DEPLOYMENT GUIDE
+============================================================

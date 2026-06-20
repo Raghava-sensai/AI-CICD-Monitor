@@ -12,9 +12,11 @@ class DeploymentStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
     SUCCESS = "success"
+    WARNING = "warning"
     FAILED = "failed"
     ROLLING_BACK = "rolling_back"
     ROLLED_BACK = "rolled_back"
+    RECOVERY_REQUIRED = "recovery_required"
     CANCELLED = "cancelled"
 
 
@@ -36,12 +38,24 @@ class Deployment:
     finished_at: Optional[str] = None
     commit_sha: Optional[str] = None
     clone_url: Optional[str] = None
+    url: Optional[str] = None
 
     # Error / failure info
     error: Optional[str] = None
+    error_type: Optional[str] = None
+    error_message: Optional[str] = None
+    root_cause: Optional[str] = None
+    recommendation: Optional[str] = None
+    possible_causes: Optional[list] = None
+    suggested_checks: Optional[list] = None
+    technical_details: Optional[str] = None
+    stack_trace: Optional[str] = None
     failed_stage: Optional[str] = None
     log_file: Optional[str] = None
     process_pid: Optional[int] = None
+    working_directory: Optional[str] = None
+    runtime_type: Optional[str] = None
+    start_command: Optional[str] = None
 
     # Rollback tracking
     rolled_back: bool = False

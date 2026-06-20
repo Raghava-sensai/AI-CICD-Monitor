@@ -14,6 +14,20 @@ MAX_BYTES = 10 * 1024 * 1024  # 10 MB per file
 BACKUP_COUNT = 5
 
 
+class SanitizedFormatter(logging.Formatter):
+    """Formatter that redacts secrets using SecretSanitizer."""
+    
+    def format(self, record):
+        from utils.sanitizer import SecretSanitizer
+        
+        # Format the message normally first
+        original_msg = super().format(record)
+        
+        # Redact any secrets
+        return SecretSanitizer.sanitize(original_msg)
+
+
+
 def setup_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
     """
     Return a named logger that writes to:
@@ -25,7 +39,7 @@ def setup_logger(name: str, level: int = logging.DEBUG) -> logging.Logger:
         return logger  # already configured
 
     logger.setLevel(level)
-    formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
+    formatter = SanitizedFormatter(LOG_FORMAT, datefmt=DATE_FORMAT)
 
     # Console handler
     ch = logging.StreamHandler(sys.stdout)

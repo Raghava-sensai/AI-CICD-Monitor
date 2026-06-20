@@ -43,6 +43,7 @@ MANIFEST_MAP: dict[str, str] = {
     "composer.json": "php",
     "*.csproj": "csharp",
     "pubspec.yaml": "dart",
+    "index.html": "static",
 }
 
 # Language → recommended Dockerfile base image
@@ -57,6 +58,7 @@ DOCKER_IMAGE_MAP: dict[str, str] = {
     "php": "php:8.3-fpm-alpine",
     "csharp": "mcr.microsoft.com/dotnet/sdk:8.0",
     "dart": "dart:stable",
+    "static": "nginx:alpine",
 }
 
 
@@ -74,37 +76,63 @@ class LanguageDetector:
                 "language": str,
                 "confidence": "high" | "medium" | "low",
                 "docker_image": str,
-                "method": str
+                "method": str,
+                "manifests": list
             }
         """
         root = Path(project_path)
 
         # 1. Check manifest files
-        language = self._check_manifests(root)
-        if language:
-            return self._result(language, confidence="high", method="manifest")
+        manifests = self._find_all_manifests(root)
+        
+        # If we found static HTML but ALSO found other strong manifests (like package.json), remove the static HTML manifest.
+        non_static_manifests = [m for m in manifests if m["language"] != "static"]
+        if non_static_manifests and len(non_static_manifests) < len(manifests):
+            manifests = non_static_manifests
+            
+        # We might find multiple package.jsons in frontend/ and backend/, etc.
+        if len(manifests) == 1:
+            return self._result(manifests[0]["language"], confidence="high", method="manifest", manifests=manifests)
+        elif len(manifests) > 1:
+            return self._result("ambiguous", confidence="low", method="multiple_manifests", manifests=manifests)
 
         # 2. Count source file extensions
         language = self._count_extensions(root)
         if language:
-            return self._result(language, confidence="medium", method="extension_count")
+            return self._result(language, confidence="medium", method="extension_count", manifests=[])
 
         logger.warning(f"Could not detect language for {project_path}")
-        return self._result("unknown", confidence="low", method="none")
+        return self._result("unknown", confidence="low", method="none", manifests=[])
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
-    def _check_manifests(self, root: Path) -> Optional[str]:
-        for filename, language in MANIFEST_MAP.items():
-            if "*" in filename:
-                # glob pattern
-                if any(root.glob(filename)):
-                    return language
-            elif (root / filename).exists():
-                return language
-        return None
+    def _find_all_manifests(self, root: Path) -> list[dict]:
+        found = []
+        for dirpath, dirnames, filenames in os.walk(root):
+            # Skip irrelevant directories
+            dirnames[:] = [d for d in dirnames if d not in (".git", "node_modules", "vendor", "venv", "__pycache__", "build", "target", "dist")]
+            
+            # Limit depth to 2 levels to avoid deep scanning into obscure sub-packages
+            try:
+                depth = Path(dirpath).relative_to(root).parts
+                if len(depth) > 2:
+                    continue
+            except ValueError:
+                continue
+                
+            for filename in filenames:
+                for pat, lang in MANIFEST_MAP.items():
+                    if (pat.startswith("*") and filename.endswith(pat[1:])) or filename == pat:
+                        rel_file = os.path.relpath(os.path.join(dirpath, filename), root)
+                        rel_dir = os.path.relpath(dirpath, root)
+                        found.append({
+                            "file": rel_file.replace("\\", "/"),
+                            "language": lang,
+                            "dir": rel_dir.replace("\\", "/")
+                        })
+        return found
 
     def _count_extensions(self, root: Path) -> Optional[str]:
         counts: dict[str, int] = {}
@@ -119,10 +147,11 @@ class LanguageDetector:
         return max(counts, key=counts.__getitem__)
 
     @staticmethod
-    def _result(language: str, confidence: str, method: str) -> dict:
+    def _result(language: str, confidence: str, method: str, manifests: list) -> dict:
         return {
             "language": language,
             "confidence": confidence,
             "docker_image": DOCKER_IMAGE_MAP.get(language, "ubuntu:22.04"),
             "method": method,
+            "manifests": manifests,
         }

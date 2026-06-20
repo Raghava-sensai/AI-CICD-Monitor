@@ -2,6 +2,8 @@
 Deployment Service - Orchestrates the full deployment lifecycle.
 """
 
+import os
+import time
 import uuid
 import datetime
 from typing import Optional
@@ -52,33 +54,51 @@ class DeploymentService:
         Create a new deployment record and start it.
         Called by webhook handlers or manual trigger API.
         """
-        repo = data.get("repo", "unknown/repo")
-        branch = data.get("branch", "main")
-        clone_url = data.get("clone_url")
-        deployment_id = str(uuid.uuid4())
+        lock_path = os.path.join(os.path.dirname(__file__), "..", "..", "deployment_storage", "deployment.lock")
+        try:
+            # Simple lock mechanism
+            if os.path.exists(lock_path):
+                # Check if lock is stale (> 5 mins)
+                if time.time() - os.path.getmtime(lock_path) > 300:
+                    os.remove(lock_path)
+                else:
+                    logger.warning("Deployment triggered but another deployment is locking the system.")
+            
+            with open(lock_path, "w") as f:
+                f.write(str(time.time()))
 
-        port = self.port_manager.allocate()
-        previous_id = self._get_current_active_id()
+            repo = data.get("repo", "unknown/repo")
+            branch = data.get("branch", "main")
+            clone_url = data.get("clone_url")
+            github_token = data.get("github_token")
+            simulation_scenario = data.get("simulation_scenario")
+            deployment_id = str(uuid.uuid4())
 
-        deployment = Deployment(
-            deployment_id=deployment_id,
-            repo=repo,
-            branch=branch,
-            port=port,
-            status=DeploymentStatus.PENDING,
-            created_at=datetime.datetime.utcnow().isoformat(),
-            clone_url=clone_url,
-            previous_deployment=previous_id,
-        )
-        _deployments[deployment_id] = deployment
-        global_metadata.on_deployment_created()
+            port = self.port_manager.allocate()
+            previous_id = self._get_current_active_id()
 
-        logger.info(
-            f"Deployment {deployment_id} queued for {repo}@{branch} on port {port}"
-        )
+            deployment = Deployment(
+                deployment_id=deployment_id,
+                repo=repo,
+                branch=branch,
+                port=port,
+                status=DeploymentStatus.PENDING,
+                created_at=datetime.datetime.utcnow().isoformat(),
+                clone_url=clone_url,
+                previous_deployment=previous_id,
+            )
+            _deployments[deployment_id] = deployment
+            global_metadata.on_deployment_created()
 
-        self.worker.start(deployment)
-        return deployment.to_dict()
+            logger.info(
+                f"Deployment {deployment_id} queued for {repo}@{branch} on port {port} (Scenario: {simulation_scenario})"
+            )
+
+            self.worker.start(deployment, github_token=github_token, simulation_scenario=simulation_scenario)
+            return deployment.to_dict()
+        finally:
+            if os.path.exists(lock_path):
+                os.remove(lock_path)
 
     def trigger_upload_deployment(self, event: dict) -> dict:
         """
@@ -89,6 +109,7 @@ class DeploymentService:
         repo = event.get("repo", "local/upload")
         branch = event.get("branch", "upload")
         source_dir = event.get("source_dir")
+        github_token = event.get("github_token")
 
         # Find the current active deployment to record as previous
         previous_id = self._get_current_active_id()
@@ -111,7 +132,7 @@ class DeploymentService:
             f"(source={source_dir} port={port})"
         )
 
-        self.worker.start(deployment, source_dir=source_dir)
+        self.worker.start(deployment, source_dir=source_dir, github_token=github_token)
         return deployment.to_dict()
 
     def rollback(self, deployment_id: str, reason: str = "Manual rollback") -> dict:
@@ -142,6 +163,45 @@ class DeploymentService:
     def get_rollback_history(self) -> list[dict]:
         """Return all rollback events, newest first."""
         return self.rollback_svc.get_history()
+
+    def recover_deployments(self):
+        """Scans database and revives processes that died due to a system reboot."""
+        import fcntl
+        import os
+        import psutil
+        
+        lock_file = "/tmp/ai-cicd-recovery.lock"
+        try:
+            # Prevent multiple gunicorn workers from recovering simultaneously
+            self._recovery_lock = open(lock_file, "w")
+            fcntl.flock(self._recovery_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except IOError:
+            return
+            
+        logger.info("Running reboot recovery sequence...")
+        from services.deployment_engine.runtime_manager import NativeRuntimeManager
+        from models.deployment import DeploymentStatus
+        
+        runtime = NativeRuntimeManager()
+        for dep_id, dep in _deployments.items():
+            if dep.status in (DeploymentStatus.SUCCESS, DeploymentStatus.RUNNING):
+                if dep.process_pid and not psutil.pid_exists(dep.process_pid):
+                    if dep.working_directory and dep.start_command and dep.port:
+                        try:
+                            logger.info(f"Reviving {dep_id[:8]} on port {dep.port}...")
+                            meta = runtime.restart(
+                                deployment_id=dep_id,
+                                working_directory=dep.working_directory,
+                                start_command=dep.start_command,
+                                port=dep.port
+                            )
+                            dep.process_pid = meta["process_pid"]
+                            dep.status = DeploymentStatus.SUCCESS
+                            self.save_deployment(dep)
+                        except Exception as e:
+                            logger.error(f"Failed to recover {dep_id}: {e}")
+                            dep.status = DeploymentStatus.FAILED
+                            self.save_deployment(dep)
 
     # ------------------------------------------------------------------
     # Internal
